@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  airi-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.n100
+    container_name: airi-web
+    restart: unless-stopped
+    ports:
+      - "3001:80"
