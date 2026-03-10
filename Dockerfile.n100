@@ -1,5 +1,5 @@
 # N100 나스용 경량 Dockerfile
-# docs, storybook 빌드 제외 - stage-web만 빌드하여 빌드 시간/메모리 절약
+# docs, storybook 빌드 제외 - stage-web만 빌드
 
 FROM node:24-trixie AS build-stage
 
@@ -15,60 +15,12 @@ COPY . .
 RUN --mount=type=cache,id=pnpm-store,target=/root/.pnpm-store \
     pnpm install --frozen-lockfile
 
-# NOTICE: VITE_ 접두사 변수는 빌드 타임에 번들에 하드코딩됩니다.
-# docker-compose.yml 의 build.args 를 통해 Portainer 환경변수를 전달받습니다.
-ARG VITE_LLM_PROVIDER=google
-ARG VITE_LLM_API_KEY
-ARG VITE_LLM_MODEL=gemini-2.0-flash
-
 RUN pnpm -F @proj-airi/stage-web run build
 
-# Production - nginx alpine (경량)
+# Production - nginx alpine
 FROM nginx:stable-alpine AS production-stage
 
-# SPA + WASM/ONNX 최적화 nginx 설정
-# NOTICE: heredoc 방식으로 설정 파일을 인라인으로 작성합니다.
-# RUN echo '...' 방식은 이스케이프 처리가 복잡하므로 heredoc 을 사용합니다.
-RUN cat > /etc/nginx/conf.d/default.conf << 'EOF'
-server {
-    listen 80;
-    server_name _;
-    root /usr/share/nginx/html;
-    index index.html;
-
-    # gzip 압축 (N100 CPU 부담 최소화)
-    gzip on;
-    gzip_vary on;
-    gzip_min_length 1024;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml text/javascript application/wasm;
-
-    # 정적 파일 캐싱 (나스 I/O 절약)
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|wasm|onnx)$ {
-        expires 30d;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # WASM MIME type (Kokoro TTS WASM 로딩에 필수)
-    location ~* \.wasm$ {
-        types { application/wasm wasm; }
-        add_header Cross-Origin-Embedder-Policy "require-corp";
-        add_header Cross-Origin-Opener-Policy "same-origin";
-    }
-
-    # ONNX 모델 파일 (Kokoro TTS 모델)
-    location ~* \.onnx$ {
-        types { application/octet-stream onnx; }
-        add_header Cross-Origin-Embedder-Policy "require-corp";
-        add_header Cross-Origin-Opener-Policy "same-origin";
-    }
-
-    # SPA fallback
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
-EOF
-
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build-stage /app/apps/stage-web/dist /usr/share/nginx/html
 EXPOSE 80
 
