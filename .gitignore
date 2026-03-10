@@ -23,6 +23,12 @@ lerna-debug.log*
 # e.g. Claude Code settings.local.json
 *.local.*
 
+# Environment variables (API 키 보호 - .env.example 만 커밋)
+.env
+.env.local
+.env.*.local
+!.env.example
+
 # Audio binaries
 *.pcm
 *.wav
